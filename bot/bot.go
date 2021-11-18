@@ -16,13 +16,3 @@ func GetBot() *tgbotapi.BotAPI {
 	utility.HandleError(err, "Error during bot initialization")
 	return bot
 }
-
-func ParseCommand(update tgbotapi.Update) {
-	command := update.Message.Command()
-	switch command {
-	case "show_queues":
-		break
-	case "create_queue":
-		break
-	}
-}
