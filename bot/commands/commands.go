@@ -37,9 +37,7 @@ func (c *CommandController) Reply(replyMsg string) {
 	msg := tgbotapi.NewMessage(c.Update.Message.Chat.ID, replyMsg)
 	msg.ParseMode = "markdown"
 	_, err := c.Bot.Send(msg)
-	if err != nil {
-		utility.HandleError(err, "error when replying")
-	}
+	utility.HandleError(err, "Error when replying")
 }
 
 func (c *CommandController) ShowQueuesHandler() {

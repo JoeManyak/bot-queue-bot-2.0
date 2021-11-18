@@ -27,9 +27,6 @@ func main() {
 			continue
 		}
 		controller.Update = update
-		if update.Message.Command() != "" {
-			controller.Reply(controller.Bot.Self.UserName)
-		}
-		//bot.ParseCommand(update)
+		controller.ParseCommand()
 	}
 }
