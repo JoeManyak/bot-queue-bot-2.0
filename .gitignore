@@ -1,0 +1,5 @@
+docker-compose.yml
+.env
+go.mod
+go.sum
+/database
