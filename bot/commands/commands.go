@@ -4,6 +4,7 @@ import (
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"queue-bot/bot/commands/db"
+	"queue-bot/bot/commands/db/models/list"
 	"queue-bot/bot/commands/db/models/queue"
 	"queue-bot/utility"
 	"strconv"
@@ -11,11 +12,20 @@ import (
 	"unicode/utf8"
 )
 
-const maxQueues = 30
+const maxQueues = 5
 
 type CommandController struct {
 	Bot    *tgbotapi.BotAPI
 	Update tgbotapi.Update
+}
+
+func (c *CommandController) BotCanPin() bool {
+	bot, err := c.Bot.GetChatMember(tgbotapi.ChatConfigWithUser{
+		ChatID: c.Update.Message.Chat.ID,
+		UserID: c.Bot.Self.ID,
+	})
+	utility.HandleError(err, "Cannot find bot in chat")
+	return bot.CanPinMessages
 }
 
 func (c CommandController) ParseCommand() {
@@ -65,9 +75,12 @@ func (c *CommandController) ShowQueuesHandler() {
 		return
 	}
 	response := "`   ID|   Назва| Предмет|`\n"
+	maxQ := maxQueues
 	for i, v := range queues {
-		if i == maxQueues {
-			break
+		if i == maxQ {
+			maxQ *= 2
+			c.Reply(response, "markdown")
+			response = "`   ID|   Назва| Предмет|`\n"
 		}
 		response += "`" + fmt.Sprintf("%5s", strconv.Itoa(v.Id)) + "|" + fmt.Sprintf("%8s", v.Name) + "|" + fmt.Sprintf("%8s", v.Lesson) + "|`\n"
 	}
@@ -77,6 +90,7 @@ func (c *CommandController) ShowQueuesHandler() {
 func (c *CommandController) CreateQueueHandler(args []string) {
 	if len(args) != 2 {
 		c.Reply(fmt.Sprintf("/create_queue@%s <i>[назва] [предмет]</i>", c.Bot.Self.UserName), "html")
+		return
 	}
 	if utf8.RuneCountInString(args[0]) > 8 || utf8.RuneCountInString(args[1]) > 8 {
 		c.Reply("Не більше восьми символів для назви предмета і черги", "markdown")
@@ -85,11 +99,45 @@ func (c *CommandController) CreateQueueHandler(args []string) {
 	message := c.Reply("Створюємо чергу...", "markdown")
 	database := db.ConnectToDb()
 	defer database.FinishConnection()
-	model := queue.Model{
+	qModel := queue.Model{
 		Name:   args[0],
 		Lesson: args[1],
 		ChatId: c.Update.Message.Chat.ID,
 		MsgId:  message.MessageID,
 	}
-	database.Insert(model)
+	id := database.Insert(qModel)
+	lastInsertId, err := id.LastInsertId()
+	if err != nil {
+		utility.HandleError(err, "Error getting last insert id")
+		database.Discard()
+	}
+	lModel := list.Model{
+		QueueId:      int(lastInsertId),
+		User:         0,
+		NumberInList: 0,
+	}
+	database.Insert(lModel)
+	response := "`>>> Черга " + qModel.Name + " <<<`\n"
+	response += "`*тут будуть перші 30 людей в черзі*" + "`\n"
+	editMsg := tgbotapi.NewEditMessageText(c.Update.Message.Chat.ID, qModel.MsgId, response)
+	editMsg.ParseMode = "markdown"
+	_, err = c.Bot.Send(editMsg)
+	if err != nil {
+		utility.HandleError(err, "Error during sending response (queue create)")
+		database.Discard()
+	}
+	if c.BotCanPin() {
+		_, err = c.Bot.PinChatMessage(tgbotapi.PinChatMessageConfig{
+			ChatID:              c.Update.Message.Chat.ID,
+			MessageID:           qModel.MsgId,
+			DisableNotification: false,
+		})
+		if err != nil {
+			utility.HandleError(err, "Error during pinning message")
+			database.Discard()
+		}
+	} else {
+		c.Reply("Радимо закріпити повідомлення з чергою (або видати для цього права ботові)",
+			"markdown")
+	}
 }

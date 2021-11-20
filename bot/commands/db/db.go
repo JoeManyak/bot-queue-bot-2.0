@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -25,12 +26,13 @@ func ConnectToDb() DatabaseController {
 	return DatabaseController{Db: db, Tx: tx}
 }
 
-func (d *DatabaseController) Insert(model models.Model) {
-	_, err := d.Tx.NamedExec(models.InsertRequest(model), model)
+func (d *DatabaseController) Insert(model models.Model) sql.Result {
+	id, err := d.Tx.NamedExec(models.InsertRequest(model), model)
 	if err != nil {
 		d.Discard()
 		utility.HandleError(err, "Error during insertion")
 	}
+	return id
 }
 
 func (d *DatabaseController) FinishConnection() {
